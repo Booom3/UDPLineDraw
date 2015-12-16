@@ -8,19 +8,40 @@ namespace WindowsFormsApplication1
 {
     static class Program
     {
-		public static int arg1, arg2, arg3;
+		public static int WinOffsetX = 0, WinOffsetY = 0, Port = 13337;
+        public static bool isServer = false;
         /// <summary>
         /// The main entry point for the application.
         /// </summary>
         [STAThread]
 		static void Main(string[] args)
         {
-			arg1 = Int32.Parse(args.ElementAtOrDefault (0) ?? "0");
-			arg2 = Int32.Parse(args.ElementAtOrDefault (1) ?? "0");
-			arg3 = Int32.Parse (args.ElementAtOrDefault (2) ?? "13337");
+            ParseArgs(args);
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new MainForm());
+        }
+
+        private static void ParseArgs(string[] args)
+        {
+            for (int i = 0; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "-winoffsetx":
+                        WinOffsetX = Int32.Parse(args.ElementAtOrDefault(i + 1) ?? "0");
+                        break;
+                    case "-winoffsety":
+                        WinOffsetY = Int32.Parse(args.ElementAtOrDefault(i + 1) ?? "0");
+                        break;
+                    case "-port":
+                        Port = Int32.Parse(args.ElementAtOrDefault(i + 1) ?? "13337");
+                        break;
+                    case "-server":
+                        isServer = bool.Parse(args.ElementAtOrDefault(i + 1) ?? "false");
+                        break;
+                }
+            }
         }
     }
 }

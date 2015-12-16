@@ -17,24 +17,109 @@ namespace WindowsFormsApplication1
 {
     public partial class MainForm : Form
     {
-		private int offsetx, offsety ;
+        private List<Line> clientLines = new List<Line>();
+        int offsetx, offsety;
         public MainForm()
         {
-			offsetx = Program.arg1;
-			offsety = Program.arg2;
+			offsetx = Program.WinOffsetX;
+			offsety = Program.WinOffsetY;
             InitializeComponent();
         }
 
-        Thread points;
+        private void RunServer()
+        {
+            List<NetworkObject> newObjects = new List<NetworkObject>();
+
+            int netObjectCount = 0;
+            List<NetworkObject> serverObjects = new List<NetworkObject>();
+            for (int i = 0; i < 10; i++)
+            {
+                Line l = new Line(netObjectCount);
+                serverObjects.Add(l);
+                newObjects.Add(l);
+                netObjectCount += 1;
+            }
+            Socket sock = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+
+            //TODO: Have clients call the server with their IP and port
+            Tuple<string, int>[] addressAndPorts = {
+                Tuple.Create("127.0.0.1", 13337),
+                Tuple.Create("192.168.2.10", 13337),
+                Tuple.Create("192.168.2.10", 13338)
+            };
+
+            var endPoints = new List<IPEndPoint>();
+            foreach (var t in addressAndPorts)
+            {
+                endPoints.Add(new IPEndPoint(IPAddress.Parse(t.Item1), t.Item2));
+            }
+
+            Random rnd = new Random();
+            while (true)
+            {
+                List<byte[]> send_buffer = new List<byte[]>();
+                //TODO: Wait until new objects are acknowledged by clients
+                if (newObjects.Count > 0)
+                {
+                    foreach (NetworkObject n in newObjects)
+                    {
+                        string newObjectString = "New," + Line.networkNameIdentifier + "," + n.NetworkID;
+                        send_buffer.Add(Encoding.ASCII.GetBytes(newObjectString));
+                    }
+                    newObjects.Clear();
+                }
+                else
+                {
+                    foreach (Line l in serverObjects)
+                    {
+                        l.SetPoints(new int[] { rnd.Next(1000), rnd.Next(1000),
+                    (4000 + rnd.Next(1000)), rnd.Next(1000)});
+
+                        string text = Line.networkNameIdentifier + "," + l.NetworkID + "," + l.GetCSVString();
+
+                        send_buffer.Add(Encoding.ASCII.GetBytes(text));
+
+
+                    }
+                }
+                foreach (var s in endPoints)
+                {
+                    foreach (byte[] b in send_buffer)
+                    {
+                        sock.SendTo(b, s);
+                    }
+                }
+                Thread.Sleep(2000);
+            }
+        }
+
+        private void ClientNewNetworkObject(string fullNetString)
+        {
+            string[] args = fullNetString.Split(',');
+            switch (args[1])
+            {
+                case "Line":
+                    clientLines.Add(new Line(int.Parse(args[2])));
+                    break;
+            }
+        }
+        
         Thread udpListen;
+        Thread server;
+        List<Thread> threads = new List<Thread>();
         string udpString = "";
         private void canvas1_Load(object sender, EventArgs e)
         {
             canvas1.Start(12);
-            points = new Thread(updatePoints);
-            //points.Start();
             udpListen = new Thread(listenUdp);
             udpListen.Start();
+            threads.Add(udpListen);
+            if (Program.isServer)
+            {
+                server = new Thread(RunServer);
+                server.Start();
+                threads.Add(server);
+            }
         }
 
         private class UdpState
@@ -53,17 +138,27 @@ namespace WindowsFormsApplication1
 
             udpString = receiveString;
             string[] splits = receiveString.Split(',');
-			if (splits.Length != 4)
-				return;
-            List<int> ints = new List<int>();
-            foreach (string s in splits)
-                ints.Add(Convert.ToInt32(s));
-            p1.X = ints[0] - offsetx;
-			p1.Y = ints[1] - offsety;
-			p2.X = ints[2] - offsetx;
-            p2.Y = ints[3] - offsety;
+            if (splits[0] == "New")
+            {
+                ClientNewNetworkObject(receiveString);
+            }
+            if (splits[0] == Line.networkNameIdentifier)
+            {
+                int id = int.Parse(splits[1]);
+                foreach (Line l in clientLines)
+                {
+                    if (l.NetworkID == id)
+                    {
+                        int[] ints = new int[4];
+                        for (int i = 0; i < 3; i++)
+                            ints[i] = Convert.ToInt32(splits[i + 2]) - (i % 2 == 0 ? offsetx : offsety);
+                        l.SetPoints(ints);
+                    }
+                }
+            }
+
             messageReceived = true;
-			BeginReceive ();
+            BeginReceive();
         }
 
 		private void BeginReceive()
@@ -78,7 +173,7 @@ namespace WindowsFormsApplication1
         private void listenUdp()
         {
             // Receive a message and write it to the console.
-			IPEndPoint e = new IPEndPoint(IPAddress.Any, Program.arg3);
+			IPEndPoint e = new IPEndPoint(IPAddress.Any, Program.Port);
 			u = new UdpClient (e);
 
             s.e = e;
@@ -95,18 +190,6 @@ namespace WindowsFormsApplication1
                 }
             }
         }
-        
-
-        Point p1, p2;
-        private void updatePoints()
-        {
-            while (true)
-            {
-                Rectangle scr = Screen.PrimaryScreen.Bounds;
-                p1 = new Point(rnd.Next(0, scr.Right), rnd.Next(0, scr.Bottom));
-                Thread.Sleep(2000);
-            }
-        }
 
         Random rnd = new Random();
 
@@ -117,8 +200,8 @@ namespace WindowsFormsApplication1
 
         private void Form1_FormClosed(object sender, FormClosedEventArgs e)
         {
-            points.Abort();
-            udpListen.Abort();
+            foreach (Thread t in threads)
+                t.Abort();
         }
 
         private int fps = 0, redraws = 0;
@@ -141,19 +224,22 @@ namespace WindowsFormsApplication1
                 redraws = 0;
                 nextFrame = nextFrame.AddSeconds(1);
             }
-            using (Pen pen = new Pen(Color.Red, 2))
+            foreach (Line l in clientLines)
             {
-                Point tempp1, tempp2;
-                Point tempWinp;
-                tempWinp = new Point(this.Left, this.Top);
-                tempp1 = Point.Subtract(p1, (Size)tempWinp);
-                tempp2 = Point.Subtract(p2, (Size)tempWinp);
-                g.DrawLine(pen, tempp1, tempp2);
+                using (Pen pen = new Pen(Color.Red, 2))
+                {
+                    Point tempp1, tempp2;
+                    Point tempWinp;
+                    tempWinp = new Point(this.Left, this.Top);
+                    tempp1 = Point.Subtract(new Point(l.StartX, l.StartY), (Size)tempWinp);
+                    tempp2 = Point.Subtract(new Point(l.EndX, l.EndY), (Size)tempWinp);
+                    g.DrawLine(pen, tempp1, tempp2);
+                }
             }
             using (Brush brush = new SolidBrush(Color.Black))
             using (Font font = new Font("Arial", 16))
             {
-                g.DrawString(fps.ToString(), font, brush, new Point(0, 0));
+                g.DrawString(fps.ToString() + " Objs: " + clientLines.Count, font, brush, new Point(0, 0));
                 g.DrawString(udpString, font, brush, new Point(0, 20));
             }
         }

@@ -55,6 +55,8 @@
     <Compile Include="Helper.cs">
       <SubType>UserControl</SubType>
     </Compile>
+    <Compile Include="Line.cs" />
+    <Compile Include="NetworkObject.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <EmbeddedResource Include="Form1.resx">
