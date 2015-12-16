@@ -107,7 +107,6 @@ namespace WindowsFormsApplication1
         Thread udpListen;
         Thread server;
         List<Thread> threads = new List<Thread>();
-        string udpString = "";
         private void canvas1_Load(object sender, EventArgs e)
         {
             canvas1.Start(12);
@@ -128,6 +127,7 @@ namespace WindowsFormsApplication1
             public IPEndPoint e;
         }
         bool messageReceived = false;
+        List<string[]> udpStrings = new List<string[]>();
         private void ReceiveCallback(IAsyncResult ar)
         {
             UdpClient u = (UdpClient)((UdpState)(ar.AsyncState)).u;
@@ -136,8 +136,21 @@ namespace WindowsFormsApplication1
             Byte[] receiveBytes = u.EndReceive(ar, ref e);
             string receiveString = Encoding.ASCII.GetString(receiveBytes);
 
-            udpString = receiveString;
+            
             string[] splits = receiveString.Split(',');
+            bool found = false;
+            for (int i = 0; i < udpStrings.Count; i++)
+            {
+                if (udpStrings[i][1] == splits[1])
+                {
+                    udpStrings[i] = splits;
+                    found = true;
+                }
+            }
+            if (!found)
+            {
+                udpStrings.Add(splits);
+            }
             if (splits[0] == "New")
             {
                 ClientNewNetworkObject(receiveString);
@@ -150,7 +163,7 @@ namespace WindowsFormsApplication1
                     if (l.NetworkID == id)
                     {
                         int[] ints = new int[4];
-                        for (int i = 0; i < 3; i++)
+                        for (int i = 0; i < 4; i++)
                             ints[i] = Convert.ToInt32(splits[i + 2]) - (i % 2 == 0 ? offsetx : offsety);
                         l.SetPoints(ints);
                     }
@@ -224,12 +237,13 @@ namespace WindowsFormsApplication1
                 redraws = 0;
                 nextFrame = nextFrame.AddSeconds(1);
             }
+            Point tempp1, tempp2;
+            Point tempWinp;
             foreach (Line l in clientLines)
             {
                 using (Pen pen = new Pen(Color.Red, 2))
                 {
-                    Point tempp1, tempp2;
-                    Point tempWinp;
+                    
                     tempWinp = new Point(this.Left, this.Top);
                     tempp1 = Point.Subtract(new Point(l.StartX, l.StartY), (Size)tempWinp);
                     tempp2 = Point.Subtract(new Point(l.EndX, l.EndY), (Size)tempWinp);
@@ -240,7 +254,16 @@ namespace WindowsFormsApplication1
             using (Font font = new Font("Arial", 16))
             {
                 g.DrawString(fps.ToString() + " Objs: " + clientLines.Count, font, brush, new Point(0, 0));
-                g.DrawString(udpString, font, brush, new Point(0, 20));
+                string ret = "";
+                foreach (string[] s in udpStrings)
+                {
+                    foreach (string s2 in s)
+                    {
+                        ret += s2 + " ";
+                    }
+                    ret += "\n";
+                }
+                g.DrawString(ret, font, brush, new Point(0, 20));
             }
         }
     }
